@@ -6,6 +6,22 @@ __pycache__/
 # C extensions
 *.so
 
+# Data cache
+data/
+cache/
+*.csv
+*.pkl
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
 # Distribution / packaging
 .Python
 build/
