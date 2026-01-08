@@ -71,7 +71,13 @@ def validate_date_range(start_date: datetime, end_date: datetime) -> tuple:
         return start_date, end_date, "Date range must be at least 30 days"
     
     # Check if end date is in the future
-    if end_date > datetime.now():
+    # Convert datetime to date for comparison
+    today = datetime.now().date()
+    end_date_compare = end_date if hasattr(end_date, 'date') else end_date
+    if hasattr(end_date_compare, 'date'):
+        end_date_compare = end_date_compare.date()
+    
+    if end_date_compare > today:
         return start_date, end_date, "End date cannot be in the future"
     
     return start_date, end_date, None
