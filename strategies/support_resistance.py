@@ -52,8 +52,8 @@ class SupportResistanceStrategy(BaseStrategy):
     @property
     def default_params(self) -> Dict[str, Any]:
         return {
-            "sr_buy": 0.4,
-            "sr_sell": 0.6,
+            "sr_buy": 0.3,
+            "sr_sell": 0.7,
             "name": "Standard"
         }
     
@@ -111,42 +111,72 @@ class SupportResistanceStrategy(BaseStrategy):
         # Calculate indicator from fractional part
         df['indicator'] = df['scaled_price'] % 1
         
-        # Generate signals: 1 (Buy), -1 (Sell), 0 (Hold)
+        # Generate signals: 1 (Enter Long), -1 (Exit Long), 0 (No Signal)
         df['signal'] = 0
         df.loc[df['indicator'] < buy_level, 'signal'] = 1   # Buy signal
         df.loc[df['indicator'] > sell_level, 'signal'] = -1  # Sell signal
+
+        # Calculate position (state)
+        # Create a temp series to hold state changes: 1 (Long), 0 (Flat)
+        # We replace 0 signals with NaN to forward fill the state
+        temp_pos = df['signal'].replace(0, np.nan)
+        
+        # If signal is -1 (sell), we want position to be 0
+        temp_pos = temp_pos.replace(-1, 0)
+        
+        # Forward fill to propagate position state
+        df['position'] = temp_pos.ffill().fillna(0)
         # --- END STRATEGY LOGIC ---
         
         # Calculate returns
         df['market_ret'] = df['Close'].pct_change()
         
         # Strategy returns with fees
-        # Fee is charged on position changes (signal.diff().abs())
-        signal_change = df['signal'].diff().abs().fillna(0)
-        df['strat_ret'] = df['market_ret'] * df['signal'].shift(1) - fee * signal_change
+        # Fee is charged on position changes
+        # Use position diff to detect actual trades
+        position_change = df['position'].diff().abs().fillna(0)
+        
+        # Return is market return * previous position - fees
+        df['strat_ret'] = df['market_ret'] * df['position'].shift(1) - fee * position_change
         
         # Cumulative returns
         df['cum_ret'] = (1 + df['strat_ret'].fillna(0)).cumprod()
         
-        # Extract trades
+        # Debug: Verify cumulative returns
+        import streamlit as st
+        st.write(f"Strategy Debug - cum_ret shape: {df['cum_ret'].shape}, range: [{df['cum_ret'].min():.4f}, {df['cum_ret'].max():.4f}]")
+        st.write(f"  First 5: {df['cum_ret'].head().tolist()}")
+        st.write(f"  Last 5: {df['cum_ret'].tail().tolist()}")
+        st.write(f"  Index type: {type(df.index)}, Index name: {df.index.name}")
+        
+        # Extract trades using vectorized access
         trades_list = []
         position = 0
         entry_price = 0
         entry_date = None
         
-        for idx, row in df.iterrows():
-            if position == 0 and row['signal'] == 1:
+        # Convert to numpy arrays for fast scalar access
+        signals = df['signal'].to_numpy()
+        closes = df['Close'].to_numpy()
+        dates = df.index.to_numpy()
+        
+        for i in range(len(df)):
+            signal = signals[i].item() if hasattr(signals[i], 'item') else signals[i]
+            close_price = closes[i].item() if hasattr(closes[i], 'item') else closes[i]
+            date = dates[i]
+            
+            if position == 0 and signal == 1:
                 # Enter long position
                 position = 1
-                entry_price = row['Close']
-                entry_date = idx
-            elif position == 1 and row['signal'] == -1:
+                entry_price = close_price
+                entry_date = date
+            elif position == 1 and signal == -1:
                 # Exit long position
-                exit_price = row['Close']
+                exit_price = close_price
                 pnl = (exit_price / entry_price - 1) - 2 * fee  # 2 fees (entry + exit)
                 trades_list.append({
                     'entry_date': entry_date,
-                    'exit_date': idx,
+                    'exit_date': date,
                     'entry_price': entry_price,
                     'exit_price': exit_price,
                     'pnl': pnl * 100  # Convert to percentage
@@ -154,7 +184,7 @@ class SupportResistanceStrategy(BaseStrategy):
                 position = 0
         
         trades_df = pd.DataFrame(trades_list)
-        trade_returns = trades_df['pnl'].tolist() if len(trades_df) > 0 else []
+        trade_returns = trades_df['pnl'].tolist() if not trades_df.empty else []
         
         # Calculate metrics
         metrics = _self._calculate_metrics(df['strat_ret'], trades_df)

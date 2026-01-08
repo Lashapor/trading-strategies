@@ -137,7 +137,7 @@ class BaseStrategy(ABC):
         max_drawdown = drawdown.min() * 100
         
         # Trade statistics
-        if trades is not None and len(trades) > 0:
+        if trades is not None and not trades.empty:
             winning_trades = len(trades[trades['pnl'] > 0]) if 'pnl' in trades.columns else 0
             total_trades = len(trades)
             win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0

@@ -39,7 +39,7 @@ def create_responsive_chart(fig, device_type: str = 'desktop'):
     if device_type == 'mobile':
         fig.update_layout(
             height=300,
-            margin=dict(l=20, r=20, t=40, b=20),
+            margin=dict(l=20, r=20, t=60, b=20),
             font=dict(size=10),
             legend=dict(
                 orientation="h",
@@ -53,7 +53,7 @@ def create_responsive_chart(fig, device_type: str = 'desktop'):
     else:
         fig.update_layout(
             height=500,
-            margin=dict(l=50, r=50, t=50, b=50),
+            margin=dict(l=60, r=50, t=80, b=50),
             font=dict(size=12)
         )
     
@@ -80,8 +80,13 @@ def create_cumulative_returns_chart(
     """
     fig = go.Figure()
     
+    # Debug: Print data info
+    import streamlit as st
+    st.write(f"**Chart Debug:** Benchmark empty: {benchmark is None or (isinstance(benchmark, pd.Series) and benchmark.empty)}")
+    st.write(f"Number of strategies: {len(results_dict)}")
+    
     # Add benchmark if provided
-    if benchmark is not None:
+    if benchmark is not None and not (isinstance(benchmark, pd.Series) and benchmark.empty):
         fig.add_trace(go.Scatter(
             x=benchmark.index,
             y=(benchmark - 1) * 100,  # Convert to percentage
@@ -109,7 +114,9 @@ def create_cumulative_returns_chart(
         title={
             'text': title_text,
             'x': 0.5,
+            'y': 0.95,
             'xanchor': 'center',
+            'yanchor': 'top',
             'font': {'size': 20 if device_type == 'mobile' else 24, 
                      'family': 'Inter, -apple-system, sans-serif'}
         },
@@ -130,6 +137,7 @@ def create_cumulative_returns_chart(
             showline=True,
             linewidth=1,
             linecolor='rgba(128, 128, 128, 0.3)',
+            tickformat='.2f',
             ticksuffix='%'
         ),
         plot_bgcolor='white',
@@ -322,8 +330,25 @@ def create_monthly_heatmap(
     Returns:
         Plotly figure object
     """
-    # Resample to monthly returns
-    monthly_returns = returns_series.resample('M').apply(
+    # Check if series is empty or doesn't have DatetimeIndex
+    if returns_series.empty or not isinstance(returns_series.index, pd.DatetimeIndex):
+        # Return empty chart with message
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Insufficient data for monthly heatmap",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color=COLORS['gray'])
+        )
+        fig.update_layout(
+            title=f'{strategy_name} - Monthly Returns',
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        return fig
+    
+    # Resample to monthly returns (ME = Month End, replacing deprecated 'M')
+    monthly_returns = returns_series.resample('ME').apply(
         lambda x: (1 + x).prod() - 1
     ) * 100  # Convert to percentage
     

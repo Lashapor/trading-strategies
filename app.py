@@ -200,9 +200,17 @@ def render_parameter_form(strategy, strategy_id: str):
         strategy: BaseStrategy instance
         strategy_id: Unique strategy identifier
     """
-    # Initialize strategy params in session state
+    # Initialize strategy params in session state with multiple default sets for S&R
     if strategy_id not in st.session_state.strategy_params:
-        st.session_state.strategy_params[strategy_id] = [strategy.default_params.copy()]
+        if strategy.name == "Support & Resistance":
+            # Initialize with three parameter sets as per reference
+            st.session_state.strategy_params[strategy_id] = [
+                {"sr_buy": 0.3, "sr_sell": 0.7, "name": "Standard"},
+                {"sr_buy": 0.2, "sr_sell": 0.8, "name": "Aggressive"},
+                {"sr_buy": 0.4, "sr_sell": 0.6, "name": "Sensitive"}
+            ]
+        else:
+            st.session_state.strategy_params[strategy_id] = [strategy.default_params.copy()]
     
     param_sets = st.session_state.strategy_params[strategy_id]
     
@@ -329,7 +337,11 @@ def validate_inputs(ticker: str, start_date, end_date, strategy_params: Dict) ->
     for strategy_id, param_sets in strategy_params.items():
         for idx, params in enumerate(param_sets):
             for key, value in params.items():
-                if value is None or (isinstance(value, str) and len(value.strip()) == 0):
+                # Check if value is None
+                if value is None:
+                    errors.append(f"Missing parameter: {key} in parameter set {idx + 1}")
+                # Check if value is an empty string
+                elif isinstance(value, str) and len(value.strip()) == 0:
                     errors.append(f"Missing parameter: {key} in parameter set {idx + 1}")
     
     return len(errors) == 0, errors
@@ -348,7 +360,7 @@ def main():
     # Version indicator
     col1, col2 = st.columns([6, 1])
     with col2:
-        st.success("✅ v1.0.1")
+        st.success("✅ v1.0.5")
     
     st.divider()
     
@@ -359,8 +371,8 @@ def main():
         # Ticker input
         ticker = st.text_input(
             "Stock Ticker",
-            value="KO",
-            placeholder="e.g., AAPL, KO, SPY",
+            value="JNJ",
+            placeholder="e.g., AAPL, JNJ, SPY",
             help="Enter stock ticker symbol"
         ).upper()
         
@@ -370,13 +382,13 @@ def main():
         with col1:
             start_date = st.date_input(
                 "Start Date",
-                value=datetime.now() - timedelta(days=365),
+                value=datetime(2016, 1, 1).date(),
                 max_value=datetime.now()
             )
         with col2:
             end_date = st.date_input(
                 "End Date",
-                value=datetime.now(),
+                value=datetime(2021, 4, 16).date(),
                 max_value=datetime.now()
             )
         
@@ -409,20 +421,14 @@ def main():
     for strategy_id, strategy in strategies.items():
         st.subheader(f"{strategy.name}")
         
-        col1, col2 = st.columns([4, 1])
+        # Info and Code sections (same for all parameter sets)
+        with st.expander("📖 Info"):
+            st.markdown(strategy.description)
+        with st.expander("💻 Code"):
+            st.code(strategy.get_source_code(), language='python')
         
-        with col1:
-            # Parameter form
-            render_parameter_form(strategy, strategy_id)
-        
-        with col2:
-            # Info and Code buttons
-            st.markdown("&nbsp;")  # Spacing
-            with st.expander("📖 Info"):
-                st.markdown(strategy.description)
-            
-            with st.expander("💻 Code"):
-                st.code(strategy.get_source_code(), language='python')
+        # Parameter form
+        render_parameter_form(strategy, strategy_id)
     
     st.divider()
     
@@ -468,13 +474,14 @@ def main():
                 st.success("✅ Calculation complete!")
                 st.rerun()
                 
-            except ValueError as e:
-                st.error(f"❌ Error: {str(e)}")
             except Exception as e:
-                st.error(f"❌ Unexpected error: {str(e)}")
+                import traceback
+                st.error(f"❌ Error: {str(e)}")
+                st.error("**Full traceback:**")
+                st.code(traceback.format_exc(), language='python')
     
     # Display results if available
-    if st.session_state.calculation_done and st.session_state.results:
+    if st.session_state.calculation_done and len(st.session_state.get('results', {})) > 0:
         st.header("📈 Results")
         
         results = st.session_state.results
@@ -521,6 +528,23 @@ def main():
             # Cumulative returns chart
             cum_returns_dict = {name: result.cumulative_returns 
                                for name, result in results.items()}
+            
+            # Debug: Check data
+            st.write("**Debug Info:**")
+            for name, cum_ret in cum_returns_dict.items():
+                st.write(f"{name}: Shape={cum_ret.shape}, Range=[{float(cum_ret.min()):.2f}, {float(cum_ret.max()):.2f}], First={float(cum_ret.iloc[0]):.2f}, Last={float(cum_ret.iloc[-1]):.2f}")
+                st.write(f"  - NaN count: {cum_ret.isna().sum()}, Data type: {cum_ret.dtype}, Index type: {type(cum_ret.index)}")
+                st.write(f"  - First 5 values: {cum_ret.head().tolist()}")
+                st.write(f"  - Last 5 values: {cum_ret.tail().tolist()}")
+            
+            st.write(f"**Benchmark:** Shape={benchmark.shape}, Range=[{float(benchmark.min()):.2f}, {float(benchmark.max()):.2f}], NaN count: {int(benchmark.isna().sum())}")
+            st.write(f"  - Type: {type(benchmark)}, Columns: {benchmark.columns.tolist() if hasattr(benchmark, 'columns') else 'N/A'}")
+            if isinstance(benchmark, pd.DataFrame):
+                st.write(f"  - First 5: {benchmark.head().values.tolist()}")
+                st.write(f"  - Last 5: {benchmark.tail().values.tolist()}")
+            else:
+                st.write(f"  - First 5: {benchmark.head().tolist()}")
+                st.write(f"  - Last 5: {benchmark.tail().tolist()}")
             
             fig = create_cumulative_returns_chart(
                 cum_returns_dict, 

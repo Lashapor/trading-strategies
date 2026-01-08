@@ -50,18 +50,24 @@ def fetch_stock_data(ticker: str, start_date: str, end_date: str) -> pd.DataFram
         raise ValueError(f"Error fetching data for {ticker}: {str(e)}")
 
 
-def validate_date_range(start_date: datetime, end_date: datetime) -> tuple:
+def validate_date_range(start_date, end_date) -> tuple:
     """
     Validate and adjust date range.
     
     Args:
-        start_date: Start date
-        end_date: End date
+        start_date: Start date (date or datetime object)
+        end_date: End date (date or datetime object)
     
     Returns:
         Tuple of (start_date, end_date, error_message)
         error_message is None if validation passes
     """
+    # Convert to date objects if they're datetime
+    if hasattr(start_date, 'date') and callable(start_date.date):
+        start_date = start_date.date()
+    if hasattr(end_date, 'date') and callable(end_date.date):
+        end_date = end_date.date()
+    
     if start_date >= end_date:
         return start_date, end_date, "Start date must be before end date"
     
@@ -71,13 +77,9 @@ def validate_date_range(start_date: datetime, end_date: datetime) -> tuple:
         return start_date, end_date, "Date range must be at least 30 days"
     
     # Check if end date is in the future
-    # Convert datetime to date for comparison
     today = datetime.now().date()
-    end_date_compare = end_date if hasattr(end_date, 'date') else end_date
-    if hasattr(end_date_compare, 'date'):
-        end_date_compare = end_date_compare.date()
     
-    if end_date_compare > today:
+    if end_date > today:
         return start_date, end_date, "End date cannot be in the future"
     
     return start_date, end_date, None
