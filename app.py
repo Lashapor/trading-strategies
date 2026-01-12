@@ -1,10 +1,10 @@
 import streamlit as st
 
-# Page configuration
-st.set_page_config(page_title="Trading Strategies", page_icon="📈")
+def main():
+  st.set_page_config(page_title="Trading Strategies", page_icon="📈")
+  st.title("📈 Trading Strategies")
+  st.text("Version 1.0.0")
 
-# Title
-st.title("📈 Trading Strategies")
 
-# Version
-st.text("Version 1.0.0")
+if __name__ == "__main__":
+    main()
